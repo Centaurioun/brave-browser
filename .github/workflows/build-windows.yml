@@ -20,14 +20,14 @@ jobs:
 
       - name: Install Node.js dependencies
         run: npm install
-
-      # --- THIS IS THE NEW, CRITICAL STEP FOR WINDOWS ---
-      - name: Set up build environment
-        run: npm run setup
+        # CRITICAL CHANGE: Specify the shell for consistency
+        shell: cmd
 
       - name: Initialize build environment (npm run init)
         run: npm run init
-        timeout-minutes: 180
+        timeout-minutes: 240 # Increased timeout for the long sync process
+        # CRITICAL CHANGE: Specify the shell
+        shell: cmd
 
       - name: Apply custom file patches
         run: |
@@ -40,6 +40,8 @@ jobs:
       - name: Build Brave Browser (npm run build)
         run: npm run build -- --target=Brave-Browser-x64
         timeout-minutes: 180
+        # CRITICAL CHANGE: Specify the shell
+        shell: cmd
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
