@@ -18,9 +18,12 @@ jobs:
         with:
           node-version: '20'
 
-      # --- THIS IS THE NEW, CORRECTIVE STEP ---
       - name: Install Node.js dependencies
         run: npm install
+
+      # --- THIS IS THE NEW, CRITICAL STEP FOR WINDOWS ---
+      - name: Set up build environment
+        run: npm run setup
 
       - name: Initialize build environment (npm run init)
         run: npm run init
