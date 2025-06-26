@@ -10,25 +10,41 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout brave-browser repository
         uses: actions/checkout@v4
 
+      # Step 1: Manually set up the Chromium build environment (depot_tools)
+      # This is the most critical part and follows the official Chromium docs.
+      - name: Set up depot_tools
+        run: |
+          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
+          echo "$env:GITHUB_WORKSPACE\depot_tools" | Out-File -FilePath $env:GITHUB_PATH -Append
+        shell: powershell
+
+      # Step 2: Prime the gclient tool from depot_tools.
+      # This downloads necessary utilities like Python into the depot_tools directory.
+      - name: Prime gclient
+        run: gclient
+        shell: cmd
+
+      # Step 3: Install Node.js dependencies for the main brave-browser project
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Install Node.js dependencies
+      - name: Install top-level Node.js dependencies
         run: npm install
-        # CRITICAL CHANGE: Specify the shell for consistency
         shell: cmd
 
-      - name: Initialize build environment (npm run init)
+      # Step 4: Run the Brave initialization script
+      # It will now run in an environment where depot_tools is properly configured.
+      - name: Initialize Brave build environment (npm run init)
         run: npm run init
-        timeout-minutes: 240 # Increased timeout for the long sync process
-        # CRITICAL CHANGE: Specify the shell
+        timeout-minutes: 240
         shell: cmd
 
+      # Step 5: Apply your custom patches to the newly downloaded source
       - name: Apply custom file patches
         run: |
           echo "Applying custom file modifications..."
@@ -37,12 +53,13 @@ jobs:
           copy .github\patches\components\ai_chat_ui\strings\ai_chat_ui_strings.grdp src\brave\components\ai_chat_ui\strings\
         shell: cmd
 
+      # Step 6: Build the browser
       - name: Build Brave Browser (npm run build)
         run: npm run build -- --target=Brave-Browser-x64
         timeout-minutes: 180
-        # CRITICAL CHANGE: Specify the shell
         shell: cmd
 
+      # Step 7: Upload the final build artifact
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
