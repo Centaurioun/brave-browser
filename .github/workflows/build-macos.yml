@@ -1,0 +1,50 @@
+name: Build Brave Browser for macOS
+
+# This workflow will also run whenever you push to the 'retier-deepseek-model' branch
+on:
+  push:
+    branches:
+      - 'retier-deepseek-model'
+
+jobs:
+  build:
+    # CRITICAL CHANGE: Use a macOS runner provided by GitHub
+    runs-on: macos-latest
+
+    steps:
+      # Step 1: Check out the code (same as Windows)
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Node.js (same as Windows)
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Step 3: Initialize the build environment (same as Windows)
+      - name: Initialize build environment (npm run init)
+        run: npm run init
+        timeout-minutes: 180 # 3 hours
+
+      # Step 4: Apply your custom modifications
+      # CRITICAL CHANGE: Use UNIX/macOS commands ('cp') instead of Windows commands ('copy')
+      - name: Apply custom file patches
+        run: |
+          echo "Applying custom file modifications..."
+          cp .github/patches/components/ai_chat/core/browser/model_service.cc src/brave/components/ai_chat/core/browser/
+          cp .github/patches/browser/ai_chat/ai_chat_settings_helper.cc src/brave/browser/ai_chat/
+          cp .github/patches/components/ai_chat_ui/strings/ai_chat_ui_strings.grdp src/brave/components/ai_chat_ui/strings/
+
+      # Step 5: Build the browser for macOS (same command, build system is platform-aware)
+      - name: Build Brave Browser (npm run build)
+        run: npm run build -- --target=Brave-Browser-x64
+        timeout-minutes: 180 # 3 hours
+
+      # Step 6: Upload the compiled browser as a downloadable artifact
+      # CRITICAL CHANGE: Updated artifact name for clarity
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: brave-browser-macos-x64
+          path: src/out/Brave-Browser-x64/Brave Browser.app/

@@ -1,0 +1,52 @@
+name: Build Brave Browser for Windows
+
+# This workflow will run whenever you push to the 'retier-deepseek-model' branch
+on:
+  push:
+    branches:
+      - 'retier-deepseek-model'
+
+jobs:
+  build:
+    # Use a Windows runner provided by GitHub
+    runs-on: windows-latest
+
+    steps:
+      # Step 1: Check out the code from your forked repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Node.js, which is required for Brave's build scripts
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Step 3: Initialize the build environment. This is the longest step.
+      # It downloads Chromium and all other dependencies. We give it a long timeout.
+      - name: Initialize build environment (npm run init)
+        run: npm run init
+        timeout-minutes: 180 # 3 hours
+
+      # Step 4: Apply your custom modifications
+      # This overwrites the official files with your edited versions.
+      - name: Apply custom file patches
+        run: |
+          echo "Applying custom file modifications..."
+          copy .github\patches\components\ai_chat\core\browser\model_service.cc src\brave\components\ai_chat\core\browser\
+          copy .github\patches\browser\ai_chat\ai_chat_settings_helper.cc src\brave\browser\ai_chat\
+          copy .github\patches\components\ai_chat_ui\strings\ai_chat_ui_strings.grdp src\brave\components\ai_chat_ui\strings\
+        shell: cmd
+
+      # Step 5: Build the browser itself for Windows x64
+      - name: Build Brave Browser (npm run build)
+        run: npm run build -- --target=Brave-Browser-x64
+        timeout-minutes: 180 # 3 hours
+
+      # Step 6: Upload the compiled browser as a downloadable artifact
+      # The output directory is zipped and attached to the workflow run.
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: brave-browser-windows-x64
+          path: src/out/Brave-Browser-x64/

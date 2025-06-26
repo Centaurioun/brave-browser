@@ -1,0 +1,11 @@
+<resources>
+  <message name="IDS_CHAT_UI_CHAT_DEEPSEEK_R1_TITLE" desc="A title for deepseek-r1 model" formatter_data="webui=AiChat">
+    DeepSeek R1
+  </message>
+  <message name="IDS_CHAT_UI_CHAT_DEEPSEEK_R1_DESCRIPTION" desc="A description for deepseek-r1 model" formatter_data="webui=AiChat">
+    This is a deep learning model for seeking patterns in data.
+  </message>
+  <message name="IDS_CHAT_UI_CHAT_DEEPSEEK_R1_KEYWORDS" desc="Keywords for deepseek-r1 model" formatter_data="webui=AiChat">
+    deep learning, pattern recognition, data analysis
+  </message>
+</resources>
