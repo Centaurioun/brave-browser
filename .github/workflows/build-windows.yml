@@ -7,61 +7,160 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     steps:
-      - name: Checkout brave-browser repository
-        uses: actions/checkout@v4
+    - name: Check disk space before start
+      run: |
+        Get-PSDrive C | Select-Object Name, Used, Free
 
-      # Step 1: Manually set up the Chromium build environment (depot_tools)
-      # This is the most critical part and follows the official Chromium docs.
-      - name: Set up depot_tools
-        run: |
-          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
-          echo "$env:GITHUB_WORKSPACE\depot_tools" | Out-File -FilePath $env:GITHUB_PATH -Append
-        shell: powershell
+    - name: Checkout brave-browser repository
+      uses: actions/checkout@v4
 
-      # Step 2: Prime the gclient tool from depot_tools.
-      # This downloads necessary utilities like Python into the depot_tools directory.
-      - name: Prime gclient
-        run: gclient
-        shell: cmd
+    # Windows Path & Git Configuration - Critical for Chromium builds
+    - name: Setup Windows build environment
+      run: |
+        # Enable long paths
+        git config --system core.longpaths true
 
-      # Step 3: Install Node.js dependencies for the main brave-browser project
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+        # Set global git config
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
 
-      - name: Install top-level Node.js dependencies
-        run: npm install
-        shell: cmd
+        # Optimize Git for Windows
+        git config --global core.autocrlf false
+        git config --global core.filemode false
+        git config --global core.compression 0
+        git config --global http.postBuffer 524288000
 
-      # Step 4: Run the Brave initialization script
-      # It will now run in an environment where depot_tools is properly configured.
-      - name: Initialize Brave build environment (npm run init)
-        run: npm run init
+        # Check configuration
+        git config --global --list
+
+    - name: Free up disk space
+      run: |
+        # Clean Windows temp folders
+        Remove-Item -Path "C:\Windows\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path "C:\Users\runneradmin\AppData\Local\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue
+
+        # Remove unnecessary Visual Studio components (safe to remove for Chromium builds)
+        Get-ChildItem -Path "C:\Program Files (x86)\Microsoft Visual Studio\*\Enterprise\Common7\IDE\Extensions\" | Where-Object { $_.PSIsContainer } | ForEach-Object { Write-Host "Removing $_"; Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
+        Get-ChildItem -Path "C:\Program Files (x86)\Android" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "Removing $_"; Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
+
+        # Report disk space after cleanup
+        Get-PSDrive C | Select-Object Name, Used, Free
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Set up depot_tools
+      run: |
+        git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git
+        echo "$env:GITHUB_WORKSPACE\depot_tools" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+    - name: Prime gclient
+      run: gclient
+      shell: cmd
+
+    - name: Configure gclient for efficient storage
+      run: |
+        # Create .gclient file with options to reduce disk usage
+        @"
+        solutions = [
+          {
+            "url": "https://github.com/brave/brave-browser.git",
+            "managed": False,
+            "name": "src",
+            "deps_file": "DEPS",
+            "custom_deps": {},
+          },
+        ]
+        cache_dir = "D:\\.gclient-cache"
+        "@ | Out-File -FilePath .gclient -Encoding ascii
+
+    # Use caching for node_modules
+    - name: Cache Node.js modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          src/brave/node_modules
+          ~/.npm
+        key: ${{ runner.os }}-node-${{ hashFiles('src/brave/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-
+
+    # Cache Chromium checkout to save time and space
+    - name: Cache Chromium checkout
+      uses: actions/cache@v4
+      id: cache-chromium
+      with:
+        path: |
+          src/brave/vendor/depot_tools
+          src/brave/vendor/chromium
+        key: chromium-checkout-${{ hashFiles('src/brave/package.json') }}
+
+    - name: Initialize project with optimized settings
+      env:
+        # Environment variables to reduce disk usage
+        GCLIENT_SHALLOW_CLONE: 1
+        DEPOT_TOOLS_WIN_TOOLCHAIN: 0
+        BRAVE_CHROMIUM_ARGS: "--no-history --shallow"
+      run: |
+        # Monitor disk space throughout the process
+        function Check-DiskSpace {
+          Write-Host "===== DISK SPACE CHECK ====="
+          Get-PSDrive C | Select-Object Name, Used, Free
+          Write-Host "==========================="
+        }
+
+        Check-DiskSpace
+
+        # Initialize project with npm
+        npm install
+
+        Check-DiskSpace
+
+        # Run init with verbose output to catch errors
+        npm run init -- --verbose
         timeout-minutes: 240
-        shell: cmd
 
-      # Step 5: Apply your custom patches to the newly downloaded source
-      - name: Apply custom file patches
-        run: |
-          echo "Applying custom file modifications..."
-          copy .github\patches\components\ai_chat\core\browser\model_service.cc src\brave\components\ai_chat\core\browser\
-          copy .github\patches\browser\ai_chat\ai_chat_settings_helper.cc src\brave\browser\ai_chat\
-          copy .github\patches\components\ai_chat_ui\strings\ai_chat_ui_strings.grdp src\brave\components\ai_chat_ui\strings\
-        shell: cmd
+        Check-DiskSpace
 
-      # Step 6: Build the browser
-      - name: Build Brave Browser (npm run build)
-        run: npm run build -- --target=Brave-Browser-x64
-        timeout-minutes: 180
-        shell: cmd
+    - name: Apply custom file patches
+      run: |
+        echo "Applying custom file modifications..."
+        copy .github\patches\components\ai_chat\core\browser\model_service.cc src\brave\components\ai_chat\core\browser\
+        copy .github\patches\browser\ai_chat\ai_chat_settings_helper.cc src\brave\browser\ai_chat\
+        copy .github\patches\components\ai_chat_ui\strings\ai_chat_ui_strings.grdp src\brave\components\ai_chat_ui\strings\
+      shell: cmd
 
-      # Step 7: Upload the final build artifact
-      - name: Upload Build Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: brave-browser-windows-x64
-          path: src/out/Brave-Browser-x64/
+    - name: Build with detailed error logging
+      run: |
+        # Set environment for better debugging
+        $env:npm_config_loglevel = "verbose"
+
+        # Attempt build with error capture
+        npm run build -- --target=Brave-Browser-x64 2>&1 | Tee-Object -FilePath build_log.txt
+
+        # If build fails, upload the log
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "Build failed. See logs for details."
+          exit $LASTEXITCODE
+        }
+      timeout-minutes: 180
+
+    - name: Upload Build Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: brave-browser-windows-x64
+        path: src/out/Brave-Browser-x64/
+
+    - name: Upload build logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-logs
+        path: |
+          build_log.txt
+          npm-debug.log*

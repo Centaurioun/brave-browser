@@ -7,38 +7,58 @@ on:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-latest # Free runner for both public and private repos (with minute limits)
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    - name: Check disk space before start
+      run: df -h
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-      # --- THIS IS THE NEW, CORRECTIVE STEP ---
-      - name: Install Node.js dependencies
-        run: npm install
+    - name: Free up disk space (safe for GitHub-hosted runners)
+      run: |
+        rm -rf ~/Library/Developer/Xcode/iOS\ DeviceSupport/
+        rm -rf ~/Library/Developer/Xcode/DerivedData/
+        rm -rf ~/Library/Caches/
+        brew cleanup
+        df -h
 
-      - name: Initialize build environment (npm run init)
-        run: npm run init
-        timeout-minutes: 180
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
 
-      - name: Apply custom file patches
-        run: |
-          echo "Applying custom file modifications..."
-          cp .github/patches/components/ai_chat/core/browser/model_service.cc src/brave/components/ai_chat/core/browser/
-          cp .github/patches/browser/ai_chat/ai_chat_settings_helper.cc src/brave/browser/ai_chat/
-          cp .github/patches/components/ai_chat_ui/strings/ai_chat_ui_strings.grdp src/brave/components/ai_chat_ui/strings/
+    - name: Install dependencies
+      run: |
+        if [ -f package-lock.json ]; then
+          npm ci
+        else
+          npm install
+        fi
 
-      - name: Build Brave Browser (npm run build)
-        run: npm run build -- --target=Brave-Browser-x64
-        timeout-minutes: 180
+    - name: Configure git for large files
+      run: |
+        git config --global core.compression 0
+        git config --global http.postBuffer 1048576000
 
-      - name: Upload Build Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: brave-browser-macos-x64
-          path: src/out/Brave-Browser-x64/Brave Browser.app/
+    - name: Initialize build environment (npm run init)
+      run: npm run init
+      timeout-minutes: 180
+
+    - name: Apply custom file patches
+      run: |
+        echo "Applying custom file modifications..."
+        cp .github/patches/components/ai_chat/core/browser/model_service.cc src/brave/components/ai_chat/core/browser/
+        cp .github/patches/browser/ai_chat/ai_chat_settings_helper.cc src/brave/browser/ai_chat/
+        cp .github/patches/components/ai_chat_ui/strings/ai_chat_ui_strings.grdp src/brave/components/ai_chat_ui/strings/
+
+    - name: Build Brave Browser (npm run build)
+      run: npm run build -- --target=Brave-Browser-x64
+      timeout-minutes: 180
+
+    - name: Upload Build Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: brave-browser-macos-x64
+        path: src/out/Brave-Browser-x64/Brave Browser.app/
